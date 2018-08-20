@@ -11,7 +11,7 @@ Two simulation environments are used: 1. differential equations of [1] and 2. Pl
 
 Software code of 1. is available here. 2. is based on Plexe (plexe.car2x.org/) and has been automated to generate several runs under different system parameters; the inherent code is reported (Plexe automation.rar). The main script is Plexe-Automatic.sh. The inherent files, called by the script, are reported as well.
 
-Thanks to Alessandro Fermi (a.fermi@impara-ai.com) for Plexe automation and Enrico Ferrari (e.ferrari@impara-ai.com) for usage of the data analytics platoform (www.rulex.ai).
+Thanks to Alessandro Fermi (a.fermi@impara-ai.com) for Plexe automation and Enrico Ferrari (e.ferrari@impara-ai.com) for usage of the data analytics platform (www.rulex.ai).
 
 For any question, do not hesitate to contact me: maurizio.mongelli@ieiit.cnr.it.
 
