@@ -1,5 +1,5 @@
 
-Once machine learning has been applied at design time , a function is derived to be applicable at run time to infer safety conditions. In this case, the function applies to vehicle platooning and shows how collision prediction is provided according to system conditions monitored at run time. The function based on a set of boolean rules may be easily implemented on the field. [Mon18] shows how the set of run time rules provides forecast with zero false negatives, while keeping the largest set of working conditions.
+Once machine learning has been applied at design time, a function is derived to be applicable at run time to infer safety conditions. In this case, the function applies to vehicle platooning and shows how collision prediction is provided according to system conditions monitored at run time. The function based on a set of boolean rules may be easily implemented on the field. [Mon18] shows how the set of run time rules provides forecast with zero false negatives, while keeping the largest set of working conditions.
 
 The sw related with the item form is as follows.
 •	SAFECOP_D42_CNR&Impara_RTMA model.c: the run time manager function.
