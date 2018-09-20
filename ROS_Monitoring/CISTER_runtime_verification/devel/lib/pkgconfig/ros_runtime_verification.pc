@@ -1,0 +1,8 @@
+prefix=/home/ps/CISTER/ENABLE_S3/ENABLE_S3_Code/CISTER_runtime_verification/devel
+
+Name: ros_runtime_verification
+Description: Description of ros_runtime_verification
+Version: 0.0.1
+Cflags: 
+Libs: -L/home/ps/CISTER/ENABLE_S3/ENABLE_S3_Code/CISTER_runtime_verification/devel/lib 
+Requires: message_runtime std_msgs

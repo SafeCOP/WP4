@@ -1,0 +1,2 @@
+ros_its_msgs:ros_runtime_verification
+-DCATKIN_DEVEL_PREFIX=/home/ps/CISTER/ENABLE_S3/ENABLE_S3_Code/CISTER_runtime_verification/devel -DCMAKE_INSTALL_PREFIX=/home/ps/CISTER/ENABLE_S3/ENABLE_S3_Code/CISTER_runtime_verification/install -G Unix Makefiles

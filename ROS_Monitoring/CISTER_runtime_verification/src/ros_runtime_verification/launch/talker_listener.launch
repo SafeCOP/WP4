@@ -1,0 +1,5 @@
+<launch>
+  <node name="ros_data_publish_simulator" pkg="ros_runtime_verification" args="car1" type="ros_data_publish_simulator" output="screen"/>
+  <node name="ros_data_store_rosbag" pkg="ros_runtime_verification" args="car1"  type="ros_data_store_rosbag" output="screen"/>
+  <node name="ros_monitoring_rosbag" pkg="ros_runtime_verification" args="car1" type="ros_monitoring_rosbag" output="screen"/>
+</launch>

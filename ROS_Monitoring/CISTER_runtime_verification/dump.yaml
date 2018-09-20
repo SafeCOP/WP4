@@ -1,0 +1,9 @@
+rosdistro: 'kinetic
+
+  '
+roslaunch:
+  uris: {host_ps_ux303ub__40935: 'http://ps-UX303UB:40935/'}
+rosversion: '1.12.13
+
+  '
+run_id: 8f8f671c-522b-11e8-a527-1002b5c197d8

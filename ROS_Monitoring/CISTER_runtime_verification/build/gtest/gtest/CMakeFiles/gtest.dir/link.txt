@@ -1,0 +1,1 @@
+/usr/bin/c++  -fPIC   -shared -Wl,-soname,libgtest.so -o libgtest.so CMakeFiles/gtest.dir/src/gtest-all.cc.o  -L/home/ps/CISTER/ENABLE_S3/ENABLE_S3_Code/CISTER_runtime_verification/build/gtest/gtest/src -lpthread -Wl,-rpath,/home/ps/CISTER/ENABLE_S3/ENABLE_S3_Code/CISTER_runtime_verification/build/gtest/gtest/src 

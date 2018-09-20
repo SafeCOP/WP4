@@ -1,0 +1,30 @@
+defines:
+  - priority: &priority1 7
+  - priority: &priority2 4
+
+topics:
+  - name:           &car1_carINFO "car1_carINFO"
+    topic:          "/car1/carINFO"
+    priority:       *priority1
+  - name:           &car2_carINFO "car2_carINFO"
+    topic:          "/car2/carINFO"
+    priority:       *priority2
+
+variables:
+  - name:           "Velocity"
+    topic:          *car1_carINFO
+    topic_var_path: "speed_speedValue"
+    topic_var_type: "double"
+  - name:           "BrakePedal"
+    topic:          *car1_carINFO
+    topic_var_path: "brakePedalPercent_Value"
+    topic_var_type: "double"
+
+monitor:
+  - monitor_name: "monitor1"
+    expression_string: "{BrakePedal[-#t5:#t0] == 1} and { {(Velocity[#t0] != 0)} or {(Velocity[-#t5] - Velocity[#t0]) < 30}  ? true : false)"
+    function: "monitor1{req$1}"
+
+  #- monitor_name: ...
+  #  monitor_type: built_in, local, remote
+  #  

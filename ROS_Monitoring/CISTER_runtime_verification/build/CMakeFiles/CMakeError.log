@@ -1,0 +1,55 @@
+Determining if the pthread_create exist failed with the following output:
+Change Dir: /home/ps/CISTER/ENABLE_S3/ENABLE_S3_Code/CISTER_runtime_verification/build/CMakeFiles/CMakeTmp
+
+Run Build Command:"/usr/bin/make" "cmTC_fca10/fast"
+/usr/bin/make -f CMakeFiles/cmTC_fca10.dir/build.make CMakeFiles/cmTC_fca10.dir/build
+make[1]: Entering directory '/home/ps/CISTER/ENABLE_S3/ENABLE_S3_Code/CISTER_runtime_verification/build/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_fca10.dir/CheckSymbolExists.c.o
+/usr/bin/cc     -o CMakeFiles/cmTC_fca10.dir/CheckSymbolExists.c.o   -c /home/ps/CISTER/ENABLE_S3/ENABLE_S3_Code/CISTER_runtime_verification/build/CMakeFiles/CMakeTmp/CheckSymbolExists.c
+Linking C executable cmTC_fca10
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_fca10.dir/link.txt --verbose=1
+/usr/bin/cc       CMakeFiles/cmTC_fca10.dir/CheckSymbolExists.c.o  -o cmTC_fca10 -rdynamic 
+CMakeFiles/cmTC_fca10.dir/CheckSymbolExists.c.o: In function `main':
+CheckSymbolExists.c:(.text+0x16): undefined reference to `pthread_create'
+collect2: error: ld returned 1 exit status
+CMakeFiles/cmTC_fca10.dir/build.make:97: recipe for target 'cmTC_fca10' failed
+make[1]: *** [cmTC_fca10] Error 1
+make[1]: Leaving directory '/home/ps/CISTER/ENABLE_S3/ENABLE_S3_Code/CISTER_runtime_verification/build/CMakeFiles/CMakeTmp'
+Makefile:126: recipe for target 'cmTC_fca10/fast' failed
+make: *** [cmTC_fca10/fast] Error 2
+
+File /home/ps/CISTER/ENABLE_S3/ENABLE_S3_Code/CISTER_runtime_verification/build/CMakeFiles/CMakeTmp/CheckSymbolExists.c:
+/* */
+#include <pthread.h>
+
+int main(int argc, char** argv)
+{
+  (void)argv;
+#ifndef pthread_create
+  return ((int*)(&pthread_create))[argc];
+#else
+  (void)argc;
+  return 0;
+#endif
+}
+
+Determining if the function pthread_create exists in the pthreads failed with the following output:
+Change Dir: /home/ps/CISTER/ENABLE_S3/ENABLE_S3_Code/CISTER_runtime_verification/build/CMakeFiles/CMakeTmp
+
+Run Build Command:"/usr/bin/make" "cmTC_b4f9e/fast"
+/usr/bin/make -f CMakeFiles/cmTC_b4f9e.dir/build.make CMakeFiles/cmTC_b4f9e.dir/build
+make[1]: Entering directory '/home/ps/CISTER/ENABLE_S3/ENABLE_S3_Code/CISTER_runtime_verification/build/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_b4f9e.dir/CheckFunctionExists.c.o
+/usr/bin/cc    -DCHECK_FUNCTION_EXISTS=pthread_create   -o CMakeFiles/cmTC_b4f9e.dir/CheckFunctionExists.c.o   -c /usr/share/cmake-3.5/Modules/CheckFunctionExists.c
+Linking C executable cmTC_b4f9e
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_b4f9e.dir/link.txt --verbose=1
+/usr/bin/cc   -DCHECK_FUNCTION_EXISTS=pthread_create    CMakeFiles/cmTC_b4f9e.dir/CheckFunctionExists.c.o  -o cmTC_b4f9e -rdynamic -lpthreads 
+/usr/bin/ld: cannot find -lpthreads
+collect2: error: ld returned 1 exit status
+CMakeFiles/cmTC_b4f9e.dir/build.make:97: recipe for target 'cmTC_b4f9e' failed
+make[1]: *** [cmTC_b4f9e] Error 1
+make[1]: Leaving directory '/home/ps/CISTER/ENABLE_S3/ENABLE_S3_Code/CISTER_runtime_verification/build/CMakeFiles/CMakeTmp'
+Makefile:126: recipe for target 'cmTC_b4f9e/fast' failed
+make: *** [cmTC_b4f9e/fast] Error 2
+
+
