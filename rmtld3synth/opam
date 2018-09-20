@@ -1,0 +1,29 @@
+opam-version: "1.2"
+name:         "rmtld3synth"
+version:      "0.3-alpha"
+maintainer:   "apedro.1@gmail.com"
+homepage:     "https://github.com/anmaped/rmtld3synth"
+bug-reports:  "https://github.com/anmaped/rmtld3synth/issues"
+dev-repo:     "https://github.com/anmaped/rmtld3synth.git"
+authors: [
+  "André Pedro"
+]
+
+depends: [
+  "ocamlbuild" {build}
+  "ocamlfind"  {build}
+  "batteries"
+  "pa_sexp_conv" {<= "113.00.02"}
+  "sexplib" {<= "113.33.00+4.03"}
+  "type_conv" {<= "113.00.02"}
+]
+
+build: [
+  ["./configure" "--prefix=%{prefix}%"]
+  [make "all"]
+]
+
+install: [make "install"]
+remove: ["ocamlfind" "remove" "rmtld3synth"]
+
+build-test: [make "tests"]
