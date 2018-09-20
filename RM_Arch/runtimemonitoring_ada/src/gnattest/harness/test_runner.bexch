@@ -1,0 +1,59 @@
+[GENERATED OBJECT FILE]
+b__test_runner.o
+[PROJECT FILES]
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test_driver.gpr
+20150730132816
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/gnattest_common.gpr
+20150729121943
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/raven.gpr
+20150730111007
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test_raven.gpr
+20150730132816
+/usr/local/gnat/lib/gnat/aunit.gpr
+20150513082254
+[BOUND OBJECT FILES]
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/debug-test_data.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/gnattest_generated.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/debug-test_data-tests.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/debug-test_data-tests-suite.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test_runner.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/buffer-reader-test_data.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/buffer-reader-test_data-tests.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/buffer-test_data.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/buffer-test_data-tests.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/buffer-writer-test_data.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/buffer-writer-test_data-tests.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/monitor-mytestmonitor-test_data.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/monitor-mytestmonitor-test_data-tests.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-buffer_1.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-buffer_1-test_data.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-buffer_1-test_data-tests.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-buffer_1-test_data-tests-suite.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-monitor_proc_1.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-monitor_proc_1-test_data.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-monitor_proc_1-test_data-tests.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-monitor_proc_1-test_data-tests-suite.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-reader_1.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-reader_1-test_data.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-reader_1-test_data-tests.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-reader_1-test_data-tests-suite.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-writer_1.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-writer_1-test_data.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-writer_1-test_data-tests.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/test-test_data-tests-writer_1-test_data-tests-suite.o
+/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/gnattest_main_suite.o
+[GENERATED SOURCE FILES]
+b__test_runner.ads
+b__test_runner.adb
+b__test_runner.ali
+[RESULTING OPTIONS]
+-L/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/
+-L/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/src/gnattest/harness/
+-L/usr/local/gnat/lib/aunit/
+-L/Users/cister/Dropbox/Research/Runtime_Monitoring/Ada_Reference_Architecture/runtimemonitoring_ada/Library/
+-L/usr/local/gnat/lib/gcc/x86_64-apple-darwin13.4.0/4.9.3/adalib/
+-static
+/usr/local/gnat/lib/gcc/x86_64-apple-darwin13.4.0/4.9.3/adalib/libgnarl.a
+/usr/local/gnat/lib/gcc/x86_64-apple-darwin13.4.0/4.9.3/adalib/libgnat.a

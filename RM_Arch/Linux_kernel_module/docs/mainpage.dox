@@ -1,0 +1,826 @@
+/** \mainpage Raven Real Time IPC
+*
+* \tableofcontents
+*
+* \section intro_sec Introduction
+*
+* This package is a linux implementation of an IPC mechanism developed at CISTER. The IPC mechanisms specializes in
+* timestamped data propagation to multiple processes, focusing on: time and space partitioning between writers
+* and readers, constant O(1) write performance, multi thread performance and efficiency, and high criticality compatibility.
+*
+* \section ipc_sec IPC mechanism Description
+*
+* The IPC mechanism is comprised of the following components:
+*  - Events: An Event is a set of data and a timestamp.
+*  - Event Buffers: Event buffers store events on circular buffers in kernel land.
+*  - Event Writer: An userland process which pushes events to a buffer via an IOCTL system call.
+*  - Event Reader: An userland process which pops events from a buffer via an IOCTL system call.
+*  - Synchronized Event Reader: A userland process which reads events from multiple buffers, ensuring that  popped events
+*   have always occurred later in time than the last popped event from any of the synchronized buffers.
+*
+* In this novel IPC mechanism processes push events into circular buffers dedicated to those specific events. Each buffer
+* can contain data of a custom length, limited to 1936 bytes on x64 and 948 bytes on x32.
+* For each buffer only one writer may exist. The same is not true for readers, there may be more than one concurrent reader
+* in the buffer. It is of interest for each process to read all events in the buffer, thus events are not removed from the
+* buffer after a reader reads them.
+*
+* The writing operation, which affects the application is of high importance. We want to minimize the effect these operations
+* have on the writing applications, ensuring robust spatial and time partitioning required in high criticality tasks. With this
+* in mind, buffers are circular, where only one writer may exist, this avoids the necessary overhead of synchronization
+* mechanisms, which significantly impact the timing analysis of the application.
+*
+* To ensure absolute time partitioning, when a buffer becomes full the oldest events are overridden. This ensures the
+* application software cannot become locked because of a full buffer. It becomes the responsibility of the system integrator
+* to guarantee that the buffer is large enough, and that applications read events from the buffers frequently enough
+* to ensure that all events are read from the monitor, and a buffer overflow never occurs.
+*
+* With each reader having its own read pointer, and the possibility of synchronized readers, the reading
+* operation becomes more complex: although the events in each buffer are ordered, the order between the buffers
+* themselves might not be. Yet the order in which the events occur is of very high importance to determine run-time
+* inconsistencies. It is the job of the synchronized reader to ensure events read from different buffers follow a correct
+* timeline, from past to future. This reading is naturally of higher time complexity than writing.
+*
+* The reading algorithm is as deterministic as possible. Before reading elements from a buffer it checks to see if an
+* element with a timestamp larger than N exists on the buffer. This is possible because of careful instruction ordering.
+* Because of this under normal circumstances a reader will never become locked because a writer is currently writing on the array.
+* The only situation where the reader might be locked is when it has overflowed, that is when events with a time stamp
+* larger than the last read timestamp have been overwritten from the buffer.
+*
+* Although the reading algorithm is lock-free, meaning it can operate concurrently with the writing algorithm without
+* resorting to synchronization mechanisms. The data reading sections, can handle medium sized data, to which data reading
+* and writing  operations are not atomic and must be synchronized. To this end we have developed a custom sequential lock,
+* which is a reader writer consistent mechanism with priority on not starving writers. This type of lock is for data where
+* a reader wants a consistent set of information and is willing to retry if the information changes.
+*
+*
+* \section architecture_sec Implementation Architecture
+*
+* The linux implementation is rather simple, we did the best to keep it as such without sacrificing performance.
+*
+* The IPC mechanism was implemented as a Linux module because we wanted to avoid kernel recompilation. Although it
+* certainly is possible to compile the module with the kernel and use it as such. Also implementing the mechanism as a
+* kernel object means we have (almost) full control over the system, we can give certain guarantees on time
+* and space partitioning we would otherwise not. For example the fact that we use our own IPC mechanism means we can
+* give higher guarantees on what is happening on the system.
+*
+* The module creates a misc device under /dev/raven to which user land applications can invoke functions via IOCTL
+* system calls. A single file gives access to all operations, on all buffers, keeping things simple. However,
+* it exposes all buffers to every process that has the necessary permissions to access /dev/raven. It would be possible
+* to implement unix style file permissions via dedicated files to each buffer via . This would constraint what processes can
+* access and what not. However, write/read permissions would be harder to implement as all operations are IOCTL system
+* calls and not true read/write system calls, thus the standard read/write flags do not apply.
+*
+* One thing to note is that it's important to ensure only the process that created the buffer, and thus owns it, can write
+* to it or even deallocate it. This is because of two reasons:
+*	- The IPC mechanism is based on the fact that there is only one writer at any time, using more than one would require
+* synchronization which would defeat the purpose of the IPC mechanism.
+*	- Also we want to make sure one does not accident write into or even deallocate the wrong buffer, this could happen
+* if an overflow happens to change the buffer id of whatever we are doing. If that operation happens to be read based,
+* such as listing information about a buffer or popping an event, then only the badly behaved application will suffer.
+* If it is a write based or deallocate based operation, then that could potentially affect all other processes which
+* are using that buffer.
+*
+* To this end the buffers restrict write/deallocate operations to the process that created it, which is identified by
+* the PID. We do however provide an interface to acquire the buffer -- change the owner to the calling process.
+*
+* All data is safely kept on kernel side, this means that even if the original application crashes, its events are still
+* available long after. It also means that after insertion, these cannot be corrupted, ever, not by any reader or itself.
+* A kernel security flaw could still allow the data to be altered via an overflow, for example, but these are beyond our
+* control. It also means it is never swapped, thus the data is always readily available.
+*
+* The event buffers are dynamically allocated via kmalloc and deallocated via kfree. If run time dynamic memory allocation
+* is a problem for you, you can try allocating all the buffers at start up. If all the buffers are successfully
+* allocated, and no dynamic memory is used during run time, then you can be sure you have enough memory to execute your
+* tasks.
+*
+* These event buffers are kept in a statically sized RCU enabled hash table which size, or number of buckets, is determined at
+* compile time. The insertion, removal and deallocation of buffers is completely handled by RCU and these operations never
+* interrupt readers or writers. Also on standard linux, RCU disables preemption on the cpu core executing the critical
+* section, and higher guarantees can be given when inserting and popping elements from event buffers. However Real Time
+* linux implements a custom RCU synchronization mechanism which does allow preemption.
+*
+* Our system calls are standard IOCTL calls and we've done everything to keep it as clean as possible.
+* Each ioctl call has one parameter which can be either:
+*	- A key_t buffer id, which can be used to acquire or deallocate the buffer.
+*	- A memory address which points to a user space address where a more complex data set is kept. This structure is
+* operation dependent. This address set which generally contains function parameters will be read from kernel land
+* and the operation requested by the process will continue.
+*
+* We have decided to keep event reader state, such as the last read index, the last read time stamp and the synchronization
+* variable on user land. This way the user can easily interact with these variables, while avoiding a clutered API.
+* By keeping the event reader state variables on kernel land we would have to expose an interface to allocate and deallocate
+* these structures, we would need to manage memory allocation also accommodate these in some data structure such as,
+* an hash table. If an application would not destroy an event reader for example, it would never be deallocated,
+* resulting in a memory leak.
+* The fact that the kernel land receives an address to this structure means its O(1) worst case instead of O(N) worst case.
+* The real trade off however is exposing internal variables the user has no business with, such as what array index the
+* last read element is. Although we range check the value in kernel land, if an overflow changes this value to a valid one,
+* the behavior is undefined, likely, the wrong event will be read.
+*
+* We have implemented the following functions:
+*	- Push : Pushes an event to a buffer.
+*	- Pop : Pops an event from a buffer.
+*	- Pop Head : Pops the newest element in the buffer.
+*   - Peek : Peeks an event from the buffer.
+*   - Peek Head : Peeks the newest element in the buffer.
+*   - Create : Creates a new buffer.
+*   - Destroy : Destroys a buffer.
+*   - Acquire : Changes ownership of a buffer to the calling process.
+*   - Info : Lists information about a buffer.
+*   - List : Lists information about all buffers.
+*
+* Notice there is no difference between a synchronized reader versus a non synchronized reader event pop/peek call. The
+* synchronized reader is distinguished during run time by having a non NULL address on its synch variable in struct
+* event_reader. This not only keeps code foot print to a minimum but also reduces code maintenance and bugs.
+*
+* Another thing of note is that we also use the same function to peek/pop elements, we simply copy the event reader state,
+* and provide pointers to the copies, this again improves code foot print to a minimum and also reduces code maintenance
+* and bugs.
+*
+* We support the compatibility IOCTL function set, thus x32 applications running on an x64 kernel can use the IPC mechanism
+* interchangeably with x64 applications.
+*
+* Finally we would like to talk about the custom sequential lock we developed that covers the entire array, this was the
+* option that presented the most advantages as it has a very small memory foot print of 4 byte, which means it can fit
+* inside a register on x32 or x64, it also covers the entire array with one structure. There were definitively other
+* alternatives such as :
+*	- Using an array of the linux seqlock synchronization mechanism, this option was discarded because of high memory footprint.
+*	- Using ktime_t last_written and last_overwritten time stamps and ensuring the read timestamp is larger than
+* the last_overwritten timestamp and smaller or equal than last_written, this option was discarded because it would
+* not work on x32 systems without using two locks.
+*
+* \section examples_sec C API Examples
+* @note In order to focus on the problem at hand, examples here do not do proper error handling. For example, if an event write operation fails we log the error via perror and exit, however one might want to deallocate buffers before exiting. You will likely want to consider this in your application.
+*
+* \subsection eventwriter_sec Event Writing
+*
+*  \code
+*	#include <stdio.h> // printf, perror
+*	#include <stdlib.h> // exit
+*	#include <sys/ipc.h> // ftok
+*	#include <errno.h> //errno
+*	#include <string.h> //strerror
+*	#include "../lib/raven_api.h" // raven IPC
+*
+*	...
+*
+*	// Open a file descriptor to /dev/raven
+*	int test=raven_init();
+*	if(test<0){
+*		perror("raven_init failed");
+*		exit(1);
+*	}
+*
+*	// get the buffer ID generated from ftok
+*	key_t id = ftok("/dev/null", 's');
+*   if(id==-1){
+*		perror("ftok failed");
+*		exit(1);
+*	}
+*
+*	// create the event buffer
+*	test=raven_buffer_create(id, sizeof(int), 128);
+*	if(test<0){
+*		perror("raven_buffer_create failed");
+*		exit(1);
+*	}
+*
+*	// declare and initialize the event writer
+*	struct event_writer writer;
+*	int data;
+*	raven_init_event_writer(&writer, id, &data);
+*
+*	// push data to the buffer
+*	data=1;
+*	test=raven_push(&writer);
+*	if(test<0){
+*		perror("raven_push failed");
+*		exit(1);
+*	}
+*
+*	// destroy the event buffer
+*	test=raven_buffer_destroy(id);
+*	if(test<0){
+*		perror("raven_destroy failed");
+*		exit(1);
+*	}
+*
+*	// close the file descriptor to /dev/raven
+*	raven_term();
+*
+*  \endcode
+*
+* \subsection eventreader_sec Event Reading
+*
+*  \code
+*	#include <stdio.h> // printf, perror
+*	#include <stdlib.h> // exit
+*	#include <sys/ipc.h> // ftok
+*	#include <errno.h> //errno
+*	#include <string.h> //strerrno
+*	#include "../lib/raven_api.h" // raven IPC
+*
+*	...
+*
+*	// Open a file descriptor to /dev/raven
+*	int test=raven_init();
+*	if(test<0){
+*		perror("raven_init failed");
+*		exit(1);
+*	}
+*
+*	// get the buffer ID generated from ftok
+*	key_t id = ftok("/dev/null", 's');
+*	if(id==-1){
+*		perror("ftok failed");
+*		exit(1);
+*	}
+*
+*	// declare and initialize the event reader
+*	struct event_reader reader;
+*	int read_data=0;
+*	raven_init_event_reader(&reader, id, &read_data, NULL);
+*
+*	// Pop an event from the event buffer
+*	test=raven_pop(&reader); //can call raven_pop_head, raven_peek, and raven_peek_head see the doc for more info
+*	if(test<0){
+*		perror("raven_buffer_pop failed");
+*		exit(1);
+*	}
+*
+*	// check if the buffer was empty
+*	if(!reader.empty){
+*		printf("read: %d with timestamp: %lld.%.9ld, last read timestamp: %lld.%.9ld\n", read_data, (long long)reader.event_time.tv_sec, reader.event_time.tv_nsec,  (long long)reader.last_read.tv_sec, reader.last_read.tv_nsec);
+*		// check if an overflow occurred
+*		if(reader.gap)
+*			printf("Oh no! we lost some events!\n");
+*	}
+*
+* 	// close the file descriptor to /dev/raven
+*	raven_term();
+*  \endcode
+*
+* \subsection synch_eventreader_sec Synchronized Event Reading
+*
+*  \code
+*	#include <stdio.h> // printf, perror
+*	#include <stdlib.h> // exit
+*	#include <sys/ipc.h> // ftok
+*	#include <errno.h> // errno
+*	#include <string.h> // strerror
+*	#include "../lib/raven_api.h" // raven IPC
+*
+*	...
+*
+*	// Open a file descriptor to /dev/raven
+*	int test=raven_init();
+*	if(test<0){
+*		perror("raven_init failed");
+*		exit(1);
+*	}
+*
+*	// get the buffer IDs generated from ftok
+*	key_t id = ftok("/dev/null", 's');
+*	if(id==-1){
+*		perror("ftok failed");
+*		exit(1);
+*	}
+*	key_t id2 = ftok("/dev/null", '2');
+*	if(id2==-1){
+*		perror("ftok failed");
+*		exit(1);
+*	}
+*
+*	// declare and initialize (zero) the synchronization time stamp
+*	struct timespec synch = {0};
+*
+*	// declare and initialize the event readers
+*	struct event_reader reader;
+*	int read_data=0;
+*	raven_init_event_reader(&reader, id, &read_data, &synch);
+*
+*	struct event_reader reader2;
+*	int read_data2=0;
+*	raven_init_event_reader(&reader2, id2, &read_data2, &synch);
+*
+*
+*	// Peek an event from the first event buffer
+*	test=raven_peek(&reader); //can call raven_pop_head, raven_peek, and raven_peek_head see the doc for more info
+*	if(test<0){
+*		perror("raven_peek failed");
+*		exit(1);
+*	}
+*
+*	// check if the buffer was empty
+*	if(!reader.empty){
+*		printf("peeked: %d with timestamp: %lld.%.9ld, the last read event timestamp: %lld.%.9ld\n, synchronization variable: %lld.%.9ld\n", read_data, (long long)reader.event_time.tv_sec, reader.event_time.tv_nsec,  (long long)reader.last_read.tv_sec, reader.last_read.tv_nsec, (long long) synch.tv_sec, synch.tv_nsec );
+*
+*		// check if an overflow occurred
+*		if(reader.gap)
+*			printf("Oh no! we lost some events!\n");
+*	}
+*
+*
+*	// Pop the newest element from the second event buffer
+*	test=raven_pop_head(&reader2); //can call raven_pop_head, raven_peek, and raven_peek_head see the doc for more info
+*	if(test<0){
+*	printf("raven_buffer_pop_head failed at %s:%d, op:%d : erro:%d %s\n", __FILE__, __LINE__, test, errno, strerror(errno));
+*		return -1;
+*	}
+*
+*	// check if the buffer was empty
+*	if(!reader2.empty){
+* 		printf("read: %d with timestamp: %lld.%.9ld, the last read event timestamp: %lld.%.9ld\n, synchronization variable: %lld.%.9ld\n", read_data2, (long long)reader2.event_time.tv_sec, reader2.event_time.tv_nsec,  (long long)reader2.last_read.tv_sec, reader2.last_read.tv_nsec, (long long) synch.tv_sec, synch.tv_nsec);
+*
+*		if(reader2.gap)
+* 			printf("Oh no! we lost some data!\n");
+*	}
+*
+*
+*	// close the file descriptor to /dev/raven
+*	raven_term();
+*  \endcode
+*
+*
+* \subsection bufferinfo_sec Get information about a buffer
+*
+*  \code
+*	#include <stdio.h> // printf, perror
+*	#include <stdlib.h> // exit
+*	#include <sys/ipc.h> // ftok
+*	#include <errno.h> //errno
+*	#include <string.h> //strerror
+*	#include "../lib/raven_api.h" // raven IPC
+*
+*	...
+*
+*	// Open a file descriptor to /dev/raven
+*	int test=raven_init();
+*	if(test<0){
+*		perror("raven_init failed");
+*		exit(1);
+*	}
+*
+*	// get the buffer ID generated from ftok
+*	key_t id = ftok("/dev/null", 's');
+*	if(id==-1){
+*		perror("ftok failed");
+*		exit(1);
+*	}
+*
+*	// get information about the buffer
+*	struct event_buffer_info info;
+*	test=raven_buffer_info(id, &info);
+*	if(test<0){
+*		perror("raven_buffer_info failed");
+*		exit(1);
+*	}
+*
+*	printf("Buffer id: %d\n",info.id);
+*	printf("Owner PID: %d\n",info.owner);
+*	printf("Array length: %u\n", info.length);
+*	printf("Data block size: %u\n", info.index_size);
+*	printf("last written timestamp: %lld.%.9ld\n", (long long) info.last_written.tv_sec, info.last_written.tv_nsec);
+*	printf("last overwritten timestamp: %lld.%.9ld\n", (long long) info.last_overwritten.tv_sec, info.last_overwritten.tv_nsec);
+*
+*	// close the file descriptor to /dev/raven
+*	raven_term();
+*
+*  \endcode
+*
+* \subsection acquirebuffer_sec Acquire a buffer
+*
+*  This allows you to push events/destroyBuffer the buffer.
+*
+*  \code
+*	#include <stdio.h> // printf, perror
+*	#include <stdlib.h> // exit
+*	#include <sys/ipc.h> // ftok
+*	#include <errno.h> //errno
+*	#include <string.h> //strerror
+*	#include "../lib/raven_api.h" // raven IPC
+*
+*	...
+*
+*	// Open a file descriptor to /dev/raven
+*	int test=raven_init();
+*	if(test<0){
+*		perror("raven_init failed");
+*		exit(1);
+*	}
+*
+*	// get the buffer ID generated from ftok
+*	key_t id = ftok("/dev/null", 's');
+*	if(id==-1){
+*		perror("ftok failed");
+*		exit(1);
+*	}
+*
+*
+*	// Acquire the buffer
+*	test=raven_acquire(id);
+*	if(test<0){
+*		perror("raven_buffer_acquire failed");
+*		exit(1);
+*	}
+*
+*	// close the file descriptor to /dev/raven
+*	raven_term();
+*
+*  \endcode
+*
+*  \subsection listbuffers_sec List all buffers
+*
+*  \code
+*	#include <stdio.h> // printf, perror
+*	#include <stdlib.h> // exit
+*	#include <sys/ipc.h> // ftok
+*	#include <errno.h> //errno
+*	#include <string.h> //strerror
+*	#include "../lib/raven_api.h" // raven IPC
+*
+*	...
+*
+*	// Open a file descriptor to /dev/raven
+*	int test=raven_init();
+*	if(test<0){
+*		perror("raven_init failed");
+* 		exit(1);
+*	}
+*
+*	struct event_buffer_info buffer_info_array[30];
+*	struct event_buffer_list list;
+*	raven_list_buffers(&list, buffer_info_array, sizeof(buffer_info_array)/sizeof(buffer_info_array[1]));
+*
+*	size_t length;
+*	if(list.number_of_buffers>list.event_buffers_length){
+*		printf("Oh no! Our array is too small!\n");
+*		length=list.event_buffers_length;
+*	} else
+*		length=list.number_of_buffers;
+*
+*	for(size_t i=0; i<length; i++)
+*		printf("Event Buffer[%zu]: Id:%d, Owner PID:%d, Array length:%d, Data block size: %d, last written timestamp: %lld.%.9ld, last overwritten timestamp: %lld.%.9ld\n",i, buffer_info_array[i].id, buffer_info_array[i].owner, buffer_info_array[i].length, buffer_info_array[i].index_size, (long long)buffer_info_array[i].last_written.tv_sec, buffer_info_array[i].last_written.tv_nsec, (long long) buffer_info_array[i].last_overwritten.tv_sec, buffer_info_array[i].last_overwritten.tv_nsec);
+*
+*
+*	// close the file descriptor to /dev/raven
+*	raven_term();
+*
+*  \endcode
+*
+* \section examplescpp_sec C++ API Examples
+*	The C++ wrapper API declares wrapper classes that constitute EventBuffer concepts such as an EventWriter, EventReader or an SynchronizedEventReader. It wraps the C API directly.
+*
+*  Factory classes are provided to construct these objects, as their initialization sometimes depends on kernel side interaction which may or not fail.
+*
+*  In general the factory classes provide two ways to instantiate objects.
+*  - Direct initialization with an id generated by the user.
+*  - Ftok initialization, which generates and in from a file and a 8bit value supplied by the user.
+*
+*  The ftok initialization is recommended as it leads to less collisions.
+*
+* @note
+* Also in order to communicate with the module a file descriptor must be opened to /dev/raven. This is done by the initialize function inside all factories. All factories use the same file descriptor, which is actually the same fd used inside the c api.
+*
+* @warning You should only call initialize one time for all factories. Once a factory has called initialize, no other should call it again unless terminate has been issued.
+*
+* In order to close the file descriptor you can call terminate on any factory.
+*
+* @note In order to focus on the problem at hand, examples here do not do proper error handling. For example, if an event write operation fails we log the error via perror and exit, however one might want to deallocate buffers before exiting. You will likely want to consider this in your application.
+*
+* \subsection eventbuffercpp_sec Event Buffer Allocation
+*
+*  There are many ways to allocate an EventBuffer. You can allocate an EventBuffer with an id generated by the user or generated by ftok. Additionally you can optionally construct an EventBuffer object with these calls.
+*
+* Buffer allocation with userland EventBuffer object:
+* \code
+* #include "lib/cpp/raven_cpp_api.h"
+* #include <stdio.h> //  perror
+* #include <stdlib.h> // exit
+*
+* // Open a file descriptor to /dev/raven
+* if(EventBufferFactory<int>::initialize()==-1){ //must only be called once for all factories!
+*		perror("initialize failed");
+*		exit(1);
+* }
+*
+* EventBuffer<int> eventBuffer;
+* key_t buffer id = 5;
+* const unsigned int length=3;
+* //create the buffer
+* if(EventBufferFactory<int>::buildEventBuffer(eventBuffer, id, length)==-1){
+*		perror("build event buffer failed");
+*		exit(1);
+* }
+*
+* //destroy the buffer
+* EventBufferFactory<int>::destroyEventBuffer(eventBuffer){
+*		perror("destroy event buffer failed");
+*		exit(1);
+* }
+*
+* //close the fd to /dev/raven
+* if(EventBufferFactory<int>::terminate()==-1){
+*		perror("terminate failed");
+*		exit(1);
+* }
+*
+* \endcode
+*
+* Buffer allocation without userland EventBuffer object:
+* \code
+* #include "lib/cpp/raven_cpp_api.h"
+* #include <stdio.h> // perror
+* #include <stdlib.h> // exit
+*
+* // Open a file descriptor to /dev/raven
+* if(EventBufferFactory<int>::initialize()==-1){ //must only be called once for all factories!
+*		perror("initialize failed");
+*		exit(1);
+* }
+
+* int partial_id = 5;
+* const unsigned int length=3;
+* //create the buffer
+* EventBufferFactory<int>::buildEventBuffer("/dev/null", partial_id, length);
+*
+* //close the fd to /dev/raven
+* if(EventBufferFactory<int>::terminate()==-1){
+* 	perror("factory initialize");
+*   exit(1);
+* }
+* \endcode
+*
+* \subsection eventwritercpp_sec Event Writing
+*
+* \code
+* #include "lib/cpp/raven_cpp_api.h"
+* #include <stdio.h> // perror
+* #include <stdlib.h> // exit
+*
+* EventWriterFactory<int> factory;
+* //Open a file descriptor to /dev/raven
+* if(factory.initialize()){ //must only be called only once for all factories!
+* 	perror("factory initialize");
+*   exit(1);
+* }
+*
+* EventWriter<int> eventWriter;
+* // create the event writer
+* int test=factory.buildEventWriter(eventWriter, "/dev/null", 'c');
+* if(test!=0){
+*	perror("event_writer_build failed");
+*	exit(1);
+* }
+*
+* //push an element to the buffer
+* if(eventWriter.push(5)!=0){
+*	perror("push failed");
+*	exit(1);
+* }
+*
+* int number=7;
+* // pushes an object using a reference
+* if(eventWriter.push_ref(number)){
+*	perror("push failed");
+*	exit(1);
+* }
+*
+* //close the fd to /dev/raven
+* if(EventBufferFactory<int>::terminate()==-1){
+*		perror("terminate failed");
+*		exit(1);
+* }
+* \endcode
+*
+* @note
+* It is also possible to create an EventWriter by calling configureWriter in the EventBuffer class.
+*
+* \subsection cppeventreader_sec Event Reading
+*
+* \code
+* #include "lib/cpp/raven_cpp_api.h"
+* #include <stdio.h> //  perror
+* #include <stdlib.h> // exit
+*
+* // Open a file descriptor to /dev/raven
+* if(EventBufferFactory<int>::initialize()==-1){ //must only be called once for all factories!
+*		perror("initialize failed");
+*		exit(1);
+* }
+*
+* EventBuffer<int> eventBuffer;
+* key_t buffer id = 5;
+* const unsigned int length=3;
+* //create the buffer
+* if(EventBufferFactory<int>::buildEventBuffer(eventBuffer, id, length)==-1){
+*		perror("build buffer failed");
+*		exit(1);
+* }
+*
+* ...
+*
+* EventReaderFactory<int> eventReaderFactory;
+* EventReader<int> eventReader;
+* //create the event reader
+* EventReaderFactory<int>::buildEventReader(eventReader, eventBuffer);
+*
+* Event<int> event;
+* bool empty;
+* bool gap;
+*
+* //pop an event
+* test=eventReader.pop(event, empty, gap);
+* if(test==-1){
+*	perror("event reader pop failed");
+*	exit(1);
+* }
+*
+* if(!empty){
+* 	std::cout << "Read new element: " << event.getData(); << std::endl;
+*
+*   if(gap){
+*  		std::cout << "Oh no a gap occured! we missed some elements" << std::endl;
+*   }
+* }
+*
+* //pop the newest event in the buffer
+* test=eventReader.popHead(event, empty, gap);
+* if(test==-1){
+*	perror("event reader pop failed");
+*	exit(1);
+* }
+*
+* if(!empty){
+* 	std::cout << "Read new element: " << event.getData(); << std::endl;
+*
+*   if(gap){
+*  		std::cout << "Oh no a gap occured! we missed some elements" << std::endl;
+*   }
+* }
+*
+* //closes the file descriptor to /dev/raven
+* if(EventReaderFactory<int>::terminate()==-1){
+*	perror("terminate");
+*   exit(1);
+* }
+* \endcode
+*
+* \note It is also possible to create an EventReader by calling configureReader on an EventBuffer.
+*
+* \subsection cppsyncheventreader_sec Synchronized Event Reading
+* \code
+* #include "lib/cpp/raven_cpp_api.h"
+* #include <stdio.h> //  perror
+* #include <stdlib.h> // exit
+*
+* EventReaderFactory<int> eventReaderFactory;
+* //open a file descriptor to /dev/raven
+* if(EventReaderFactory.initialize()){
+* 	perror("initialize failed");
+*   exit(1);
+* }
+* // initialize the synchronization timestamp;
+* struct timespec synch={};
+* SynchronizedEventReader<int> eventReader;
+* //initialize the synchronized event reader
+* if(EventReaderFactory<int>::buildSynchronizedEventReader(eventReader, &synch, "/dev/null", 'a')){
+*   perror("build synchronizatin reader");
+*   exit(1);
+* }
+*
+* Event<int> event;
+* bool empty;
+* bool gap;
+*
+* //pop an element from the buffer.
+* test=eventReader.pop(event, empty, gap);
+* if(test==-1){
+*	perror("event reader pop failed");
+*	exit(1);
+* }
+*
+* if(!empty){
+* 	std::cout << "Read new element: " << event.getData(); << std::endl;
+*
+*   if(gap){
+*  		std::cout << "Oh no a gap occured! we missed some elements" << std::endl;
+*   }
+* }
+*
+* if(SynchronizedEventReaderFactory<int>::terminate()) {
+*	perror("terminate failed");
+*	exit(1);
+* }
+* \endcode
+*
+* \note It is also possible to create an SynchronizedEventReader by calling EventReaderFactory.configureSynchronizedReader
+* with a user generated id or an EventBuffer object.
+*
+* \subsection bufferinfo_sec Get information about a buffer
+*
+* \code
+* #include "lib/cpp/raven_cpp_api.h"
+* #include <stdio.h> // perror
+* #include <stdlib.h> // exit
+*
+* // Open a file descriptor to /dev/raven
+* if(EventBufferFactory<int>::initialize()==-1){ //must only be called once for all factories!
+*		perror("initialize failed");
+*		exit(1);
+* }
+*
+* EventBufferInfo info;
+* //get buffer information
+* int test=EventBufferFactory<int>::getInformation(info,"/dev/null", 'a');
+* if(test==-1){
+*    if(errno==ENOENT) std::cout <<"No such buffer exists" << std::endl;
+*    else {
+*		perror("getInformation");
+*       exit(1);
+*	 }
+* }
+*
+* //print buffer information
+* std::cout <<
+* "Buffer id: " << info.getBufferId() << std::endl <<
+* "Owner PID: " << info.getBufferOwner() << std::endl <<
+* "Array length: " << info.getLength() << std::endl << "Index size: " << info.getIndexSize() << std::endl <<
+* "last written timestamp: " << info.getLastWritten().tv_sec <<"s " << info.getLastWritten().tv_nsec <<"n" << std::endl <<
+* "last overwritten timestamp: " << info.getLastOverwritten().tv_sec <<"s " << info.getLastOverwritten().tv_nsec <<"n" << std::endl;
+*
+* //close the fd to /dev/raven
+* if(EventBufferFactory<int>::terminate()==-1){
+*		perror("terminate failed");
+*		exit(1);
+* }
+* \endcode
+* \subsection cppacquirebuffer_sec Acquire a buffer
+*
+* Allows you to push elements to, or destroy a buffer.
+* \code
+* #include "lib/cpp/raven_cpp_api.h"
+* #include <stdio.h> // perror
+* #include <stdlib.h> // exit
+*
+* // Open a file descriptor to /dev/raven
+* if(EventBufferFactory<int>::initialize()==-1){ //must only be called once for all factories!
+*		perror("initialize failed");
+*		exit(1);
+* }
+*
+* EventBuffer<int> eventBuffer;
+* //acquire the buffer
+* if(EventBufferFactory<int>::acquireBuffer(eventBuffer, "/dev/null", 'a')==-1){
+*	perror("acquire failed");
+*   exit(-1);
+* }
+*
+* // deallocate the buffer
+* if(eventBuffer.destroy()){
+*	perror("destroy failed");
+*   exit(-1);
+* }
+* //close the fd to /dev/raven
+* if(EventBufferFactory<int>::terminate()==-1){
+*		perror("terminate failed");
+*		exit(1);
+* }
+* \endcode
+*
+*  @note You can also call acquire with an user side generated id, the eventBuffer parameter is always optional on both calls.
+*
+* \section test_sec Unit Tests
+*
+* The framework provides a unit test suite to verify that the implementation behaves as expected.
+*
+* - CppApiTest: Tests that our C++ api functions correctly.
+*
+* - FailTests: Tests that function calls fail when given missformated parameters.
+*
+* - RavenOperationsTest: Tests support operations such as buffer list, acquire and info.
+*
+* - EventReaderMultiThreadTest: lets readers and a writer race against each other while pushing/popping elements. The buffer length, writer/reader periodicity can be configured. This test Verifies that the removed data is sequentially correct. By nature this is necessarily stochastic and the test is made to yield 99% confidence that the EventReader works correctly. The test also generates some statistics such as min/max write/read time.
+*
+* - EventReaderTest: tests the event reader in a single threaded environment to ensure that the correct element is always popped.
+*
+* - SynchronizedEventReaderTest: tests the synchronized event reader in a single threaded environment to ensure that the correct element is always popped.
+*
+* - SynchronizedEventReaderMultiThreadTest: lets readers and a writer race against each other while pushing/popping elements. The buffer length, writer/reader periodicity can be configured. This test Verifies that the removed data is sequentially correct. By nature this is necessarily stochastic and the test is made to yield 99% confidence that the SynchronizedEventReader works correctly. The test also generates some statistics such as min/max write/read time.
+* - EventReaderTest: tests the event
+*
+* - SynchronizedEventReaderTestSingle: Tests the Synchronized event reader with only one buffer.
+*
+* \section todo_sec Todos
+*	- Improve buffer list operation : When asking for a buffer list, the user should provide a range such as [0, 5], [0,0] should be supported, in which case the system call informs the user on how many buffers exist.
+* 	- Implement blocking read calls : http://lxr.free-electrons.com/source/include/linux/wait.h . If there are processes on the wait queue, the writer should wake up one process, that process will wake up another process and so on.
+*   - A more thorough complexity analise on the reader/writer algorithms.
+* 	- Try to come up with some sort of linux like select system call, which allows for a process to wait on multiple  event buffers at once. We cannot use select because select waits on read calls only.  http://linux.die.net/man/2/select
+*	- Try to figure out a better way to handle read/writer permissions.
+*	- User space program that lists  active event buffers.
+*   - Priority inheritance locks.
+*
+*  \section contact_sec Contact Us
+*
+*	If you wish to contact the authors please send an email to Humberto Carvalho 1120409@isep.ipp.pt .
+*/

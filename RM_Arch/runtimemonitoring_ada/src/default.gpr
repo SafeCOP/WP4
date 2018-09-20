@@ -1,0 +1,11 @@
+project Default is
+
+   for Main use ("main_ex1.adb", "main_ex2.adb", "main_ex3.adb");
+   for Source_Dirs use (".", "../examples/ex1", "../examples/ex2", "../examples/ex3");
+
+   package Compiler is
+      for Default_Switches ("ada") use ("-g", "-O2");
+   end Compiler;
+
+end Default;
+

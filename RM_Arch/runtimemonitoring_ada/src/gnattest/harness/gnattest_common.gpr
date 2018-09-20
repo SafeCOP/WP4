@@ -1,0 +1,2 @@
+abstract project Gnattest_Common is
+end Gnattest_Common;

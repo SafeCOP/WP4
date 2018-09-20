@@ -1,0 +1,137 @@
+http://linux.die.net/man/3/ftok
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+kmalloc is not the most efficient way to allocate large areas of memory (see
+Chapter 8), so the implementation chosen for scull is not a particularly smart one.
+
+That’s why
+the code just uses kmalloc and kfree without resorting to allocation of whole pages,
+although that approach would be more efficient.
+
+************************************************************************
+************************************************************************
+************************************************************************
+
+SPIN_LOCKS
+RW_SEM
+SEM
+COMPLETIONS - NOTIFY A CERTAIN ACTIVITY HAS BEEN COMPLETED. 
+
+*****************************
+
+linux has lock free circular buffer
+
+ATOMIC_T Some processors might perform that sort of increment in an
+atomic manner, but you can’t count on it. But a full locking regime seems like over-
+head for a simple integer value. For cases like this, the kernel provides an atomic
+integer type called atomic_t , defined in <asm/atomic.h>.
+
+
+
+ATOMIC BITS
+
+
+seqlocks
+The 2.6 kernel contains a couple of new mechanisms that are intended to provide
+fast, lockless access to a shared resource. Seqlocks work in situations where the
+resource to be protected is small, simple, and frequently accessed, and where write
+access is rare but must be fast. Essentially, they work by allowing readers free access
+to the resource but requiring those readers to check for collisions with writers and,
+when such a collision happens, retry their access. Seqlocks generally cannot be used
+to protect data structures involving pointers, because the reader may be following a
+pointer that is invalid while the writer is changing the data structure.
+
+
+
+Read-Copy-Update  -  COULD BE USEFUL TO UPDATE THE DATA TABLE
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%55
+
+
+In addition
+to the copy_from_user and copy_to_user functions, the programmer can exploit a set
+of functions that are optimized for the most used data sizes (one, two, four, and eight
+bytes). These functions are described in the following list and are defined in <asm/
+uaccess.h>:
+put_user(datum, ptr)
+
+
+
+
+you should provide a method which puts the process to sleep.
+
+
+select call requires support from driver... should consider implementing calls (i dont think this is possible because it would envolve knowing which buffer the data is reading from):
+Applications that use nonblocking I/O often use the poll, select, and epoll system
+calls as well. poll, select, and epoll have essentially the same functionality: each allow
+a process to determine whether it can read from or write to one or more open files
+without blocking.
+
+**********************************************************************
+
+Also, programmers should remember that the smallest allocation that
+kmalloc can handle is as big as 32 or 64 bytes, depending on the page size used by
+the system’s architecture.
+There is an upper limit to the size of memory chunks that can be allocated by kmal-
+loc. That limit varies depending on architecture and kernel configuration options. If
+your code is to be completely portable, it cannot count on being able to allocate any-
+thing larger than 128 KB. If you need more than a few kilobytes, however, there are
+better ways than kmalloc to obtain memory, which we describe later in this chapter.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+If a user-space program needs to use these types, it can prefix the names with a dou-
+ble underscore: __u8 and the other types are defined independent of __KERNEL__ . If,
+for example, a driver needs to exchange binary structures with a program running in
+user space by means of ioctl, the header files should declare 32-bit fields in the struc-
+tures as __u32 .
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The kobject is the fundamental structure that holds the device model together. It was
+initially conceived as a simple reference counter, but its responsibilities have grown
+over time, and so have its fields. The tasks handled by struct kobject and its sup-
+porting code now include:
+Reference counting of objects
+Often, when a kernel object is created, there is no way to know just how long it
+will exist. One way of tracking the lifecycle of such objects is through reference
+counting. When no code in the kernel holds a reference to a given object, that
+object has finished its useful life and can be deleted.
+
+***
+
+that probably wont work, we can track PIDS every 5 mins or so.... if a buffer has no pids for > than x time, we can quit it.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+***************** HOW TO DEBUG KERNEL ****************************
+CONFIG KVM: 
+https://www.whonix.org/wiki/KVM#Setting_up_gdb_to_work_with_qemu-kvm_via_libvirt
+
+
+SHARED DIRECTORIES KVM: 
+http://rabexc.org/posts/p9-setup-in-libvirt
+
+
+AFTER CONFIG:
+http://people.eecs.ku.edu/~kpoduval/UMOD/kvm_gdb.html
+
+
+
+gdb /boot/vmlinuz-linux
+target remote:1234
+
+Example: get load address from proc file system on the Guest OS.
+bash> cat /proc/modules
+your module should get displayed like this
+umod_if 3612 0 - Live 0xf7e65000
+Now on the gdb console type
+(gdb) add-symbol-file /porjects/kpoduval/umod_if.ko 0xffffffffa0491000
+
+
+add-symbol-file '/home/silverone/Documents/ISEP/3ano/2semestre/pesti/code/kernel/kmod/raven.ko' 0xffffffffa047b000

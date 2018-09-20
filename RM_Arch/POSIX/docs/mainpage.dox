@@ -1,0 +1,438 @@
+/** \mainpage Monitoring Architecture
+ *
+ * \tableofcontents
+ *
+ * \section intro_sec Introduction
+ *
+ * This package is a performance oriented implementation of the Monitoring Architecture developed at CISTER. This new
+ * architecture consists of the following components:
+ *
+ * - Events: Event is a set of conditions characterized by a timestamp.
+ * - Monitored Applications: These are the applications which we want to verify at run time.
+ * - Monitors: These will monitor the applications. A Monitor can be seen as a finite state machine that reads events,
+ *   and advances its own state.
+ * - Buffers: Circular arrays instances of EventBuffer, one dedicated to each event.
+ * - Buffer Writers: Instances of EventWriter are used by applications to write event instances to buffers.
+ * - Buffer Readers: Instances of IEventReader, used to read from a Buffer.
+ *
+ * In this novel architecture monitored applications push event instances in circular buffers dedicated to those specific events.
+ * Each buffer contain event instances of a single type, for example "Door opened" event type signals that the door has been
+ * opened.
+ *
+ * For each buffer only one writer may exist. The same is not true for readers, the monitors: there may be more than one
+ * concurrent reader in the buffer. It is of interest to each monitor to read all events in the buffer, thus events are
+ * not removed from the buffer after a monitor reads them.
+ *
+ * \subsection writing_sec Writing Operation
+ *
+ * The writing operation, which affects the application is of high importance. We want to minimize the effect these operations
+ * have on the applications, ensuring robust spatial and time partitioning required in high criticality tasks. With this
+ * in mind, buffers are circular, where only one writer may exist, this avoids the necessary overhead of synchronization
+ * mechanisms, which significantly impact the timing analysis of the application.
+ *
+ * To ensure absolute timing partitioning, when a buffer becomes full the oldest events are overridden. This ensures the
+ * application software cannot become locked because of a full buffer. It becomes the responsibility of the system integrator
+ * to guarantee that the buffer is large enough and monitors frequently read applications from the buffers to ensure that
+ * all events are read from the monitor and a buffer overflow never occurs.
+ *
+ * \subsection reading_sec Reading Operation
+ *
+ * With each reader having its own read pointer, and buffers dedicated to holding instances of a single event, the reading
+ * operation becomes more complex: although the events in each buffer are ordered, the order between the buffers
+ * themselves might not be. Yet the order in which the events occur is of very high importance to determine run-time
+ * inconsistencies, therefor it is the job of the reader to ensure events read from different buffers follow a correct timeline,
+ * from past to future.
+ *
+ * \subsection advantages_sec Architectures Advantages
+ *
+ * The Architecture enables independent development of monitors and applications, space and time partitioning, efficiency
+ * and simplicity. By reducing the interdependency between monitors and applications, the application software is unaware of
+ * any monitors, thus must be certified only once. Monitors can be added and removed at will, without anytime or spatial
+ * consequences.
+ *
+ * With readers having their own pointers, they become independent from each other and thus simultaneous access becomes
+ * possible without synchronization mechanisms, maximizing parallelization. Since elements are never deleted from the
+ * buffers multiple monitors can read the same event, minimizing data redundancy.
+ *
+ * \section using_sec How to use this library
+ *
+ *  This library is POSIX compliant and should work on any POSIX OS, it is known to work on linux and windows.
+ *
+ * Since we provide a data structure mechanism which is naturally comprised of templated code, we cannot provide a compiled library to be linked with your application. You must compile the code.
+ *
+ * One compile requirement is the boost atomic library. You may either install the boost libraries from your distribution packet manager or install it manually at add it to your include path.
+ * We chose boost because it doesn't tie us to any C++ standard (C++11), it doesn't tie us to specific compiler intrinsics, and because of high code quality assurance.
+ *
+ * To use this library simply copy all the headers/cpp files in the main project source (copying the tests is not necessary), to your project. There is no need to link boost atomic since all we need are the headers.
+ *
+ *
+ * \section architecture_sec Architecture
+ *
+ * \dot
+ * digraph classDiagram {
+ *      size="40,20"
+ *      node[shape=record,style=filled,fillcolor=gray95]
+ *      edge[dir=back, arrowtail=empty]
+ *
+ *
+ *      2[label = "{IEventBuffer &lt;typename T&gt;| |+ virtual bool configWriter(EventWriter&lt;T&gt; &eventWriter)=0\n
+ *                               + virtual void configReader(EventReader&lt;T&gt; &eventReader) const = 0\n
+ *                                + virtual void configSynchronizedEventReader(struct timespec *const &afterTime, SynchronizedEventReader&lt;T&gt; &eventReader) const = 0\n
+ *                                + virtual size_t getLength() const = 0\n
+ *                                + virtual bool empty() const = 0\n
+ *      }"]
+
+ *      3[label = "{EventBuffer&lt;typename T, size_t N&gt; |
+ *                                 - Buffer&lt;T&gt; buffer\n
+ *                                 - Event&lt;T&gt; array[N]\n
+ *                                 - bool writer\n |
+ *                                 + EventBuffer()\n
+ *                                 + bool configWriter(EventWriter&lt;T&gt; & eventWriter)\n
+ *                                 + void configReader(EventReader&lt;T&gt; & eventReader) const\n
+ *                                 + void configSynchronizedEventReader(struct timespec * const &afterTime, SynchronizedEventReader&lt;T&gt; &eventReader) const\n
+ *                                 + size_t getLength() const\n
+ *                                 + bool empty() const
+ *       }"]
+ *
+ *      4[label = "{Event&lt;typename T&gt; |
+ *                                  - T data \n
+ *                                  - struct timespec time |
+ *                                  + Event()\n
+ *                                  + Event(const T & data)\n
+ *                                  + Event(const T &data, const struct timespec &time)\n
+ *                                  + T &getData()\n
+ *                                  + struct timespec &getTime()\n
+ *                                  + bool isNull() const\n
+ *                                  + bool operator&lt;(const Event &event) const\n
+ *                                   ...\n
+ *                                  + bool operator==(const struct timespec &time) const\n
+ *                                  ...\n
+ *                                  + friend bool operator&gt;=(const struct timespec &time, const Event&lt;N&gt; &event)\n
+ *      }"]
+ *
+ *      5[label = "{IEventReader&lt;typename T&gt;| |
+ *                                  + virtual bool pop(Event&lt;T&gt; &event, bool &gap) = 0\n
+ *                                  + virtual bool peek(Event&lt;T&gt; &event, bool &gap) = 0\n
+ *                                  + virtual bool popHead(Event&lt;T&gt; &event, bool &gap) = 0\n
+ *                                  + virtual bool peekHead(Event&lt;T&gt; &event, bool &gap) = 0\n
+ *                                  + virtual bool empty() const = 0\n
+ *       }"]
+ *
+ *      6[label = "{EventReader&lt;typename T&gt;|
+ *                                  - const Buffer&lt;T&gt; *buffer\n
+ *                                  - length_t index\n
+ *                                  - struct timespec lastReadEvent |
+ *                                  + EventReader()\n
+ *                                  + EventReader(const Buffer&lt;T&gt; *const &buffer)\n
+ *                                  - bool popGap(Event&lt;T&gt; &tempEvent, Event&lt;T&gt; &event, bool &gap)\n
+ *                                  - bool peekGap(const Event&lt;T&gt; *tempIndex, Event&lt;T&gt; &tempEvent, Event&lt;T&gt; &event, bool &gap) const\n
+ *                                  + bool pop(Event&lt;T&gt; &event, bool &gap)\n
+ *                                  + bool peek(Event&lt;T&gt; &event, bool &gap)\n
+ *                                  + bool popHead(Event&lt;T&gt; &event, bool &gap)\n
+ *                                  + bool peekHead(Event&lt;T&gt; &event, bool &gap)\n
+ *                                  + bool empty() const\n
+ *                                  + void setBuffer(const Buffer&lt;T&gt; *const buffer)\n
+ *       }"]
+ *
+ *       7[label = "{SynchronizedEventReader&lt;typename T&gt;|
+ *                                  - const Buffer&lt;T&gt; *buffer\n
+ *                                  - length_t index\n
+ *                                  - struct timespec lastReadEvent\n
+ *                                  - struct timespec *afterTime |
+ *                                  + SynchronizedEventReader()\n
+ *                                  + SynchronizedEventReader(const Buffer&lt;T&gt; *const &buffer, struct timespec *const &afterTime)\n
+ *                                  - bool popGap(Event&lt;T&gt; &tempEvent, const struct timespec &afterTime, struct timespec &lastOverwritten, Event&lt;T&gt; &event, bool &gap)\n
+ *                                  - bool peekGap(const Event&lt;T&gt; *&tempIndex, Event&lt;T&gt; &tempEvent, const struct timespec &afterTime, struct timespec &lastOverwritten, Event&lt;T&gt; &event, bool &gap)\n
+ *                                  + bool pop(Event&lt;T&gt; &event, bool &gap)\n
+ *                                  + bool peek(Event&lt;T&gt; &event, bool &gap)\n
+ *                                  + bool popHead(Event&lt;T&gt; &event, bool &gap)\n
+ *                                  + bool peekHead(Event&lt;T&gt; &event, bool &gap)\n
+ *                                  + bool empty() const\n
+ *                                  + void setBuffer(const Buffer&lt;T&gt; *const buffer)
+ *       }"]
+ *
+ *       8[label = "{Buffer&lt;typename T&gt;|
+ *									+ const length_t length \n
+ *                                  - Event&lt;T&gt; *const array\n
+ *                                  - Atomic&lt;length_t &gt; index\n |
+ *                                  + Buffer(Event&lt;T&gt; *const &arrayBegin, Event&lt;T&gt; *const &arrayEnd)\n
+ *                                  + void push(const Event&lt;T&gt; &event)\n
+ *                                  + void push(const T &data)\n
+ *                                  + Event&lt;T&gt; *getHead() const\n
+ *                                  + const struct timespec &getLastOverwrittenTimestamp() const\n
+ *                                  + size_t getLength() const\n
+ *                                  + bool empty() const
+ *       }"]
+ *
+ *       9[label = "{EventWriter&lt;typename T&gt;|
+ *                                  + Buffer&lt;T&gt; *buffer |
+ *                                  + EventWriter()\n
+ *                                  + EventWriter(Buffer&lt;T&gt; *buffer)\n
+ *                                  + void push(const Event&lt;T&gt; &event)\n
+ *                                  + void push(const T &data)\n
+ *                                  + bool empty() const\n
+ *                                  + void setBuffer(Buffer&lt;T&gt; *buffer)
+ *       }"]
+ *       10[label = "{Monitor |
+ *                                  - struct timespec lastReadEvent\n
+ *                                  - struct timespec period\n
+ *                                  - pthread_t thread\n
+ *                                  - bool exit\n|
+ *                                  + Monitor(const unsigned long seconds, const unsigned long nanoSeconds)\n
+ *                                   + Monitor(const struct timespec &period)\n
+ *                                  - static void *pthreadFunctionChecked(void *ptr)
+ *                                  # void configSynchronizedEventReader(SynchronizedEventReader&lt;T&gt; &eventReader, const IEventBuffer&lt;T&gt; &buffer)\n
+ *                                  # virtual void run() = 0\n
+ *                                  + int enableWithDeadlineMissCheck()\n
+ *                                  + void disable()\n
+ *                                  + const timespec &getPeriod()\n
+ *                                  + void setPeriod(const struct timespec &period)
+ *       }"]
+ *
+ *		11[label="{SeqLock&lt;typename T&gt;|
+ *									- T data \n
+ *									- atomic&lt;unsigned int&gt; sequence |
+ *									+ SeqLock() \n
+ *									+ SeqLock(const T &data) \n
+ *									- write_seqbegin() \n
+ *									- write_seqend() \n
+ *									- unsigned int read_seqbegin() const \n
+ *									- bool read_seqretry(const unsigned int tmp) \n
+ *									+ void load(T & data) const; \n
+ *									+ void store(const T & data); \n
+ *									+ SeqLock & operator=(const T & data);
+ *		}"]
+ *
+ *		12[label="{ArraySeqLock |
+ *									- atomic &lt;struct array_seq_lock&gt; sequence \n
+ *									- struct array_seq_lock tmp_sequence \n
+ *									- const length_t array_length |
+ *									+ ArraySeqLock(const length_t array_length) \n
+ *									+ length_t write_get_index() \n
+ *									+ void write_seqbegin() \n
+ *									+ void write_seqend \n
+ *									+ struct array_seq_lock read_seqbegin(const length_t index) const \n
+ *									+ bool read_seqretry(const struct array_seq_lock &seq_lock, const length_t index) const \n
+ *									+ length_t getLength() const \n
+ *		}"]
+ *
+ *
+ *
+ *      2->3
+ *      5->6
+ *      5->7
+ *      3->4[ arrowtail=odiamond, headlabel="1", taillabel="*  "]
+ *      3->8[ arrowtail=odiamond]
+ *      6->8[ arrowtail=odiamond]
+ *      7->8[ arrowtail=odiamond]
+ *		8->11[arrowtail=odiamond, label="struct timespec lastOverwrittenTimestamp"]
+ *		8->12[arrowtail=odiamond]
+ *      9->8[ arrowtail=odiamond]
+ *      7->10[ arrowtail=onone, label="Monitor creates SynchronizedEventReaders", constraint=false]
+ *      6->3[ arrowtail=onone, label="EventBuffer creates EventReaders", constraint=false]
+ *      7->3[ arrowtail=onone, label="EventBuffer creates SynchronizedEventReaders", constraint=false]
+ *      9->3[ arrowtail=onone, label="EventBuffer creates an EventWriter", constraint=false]
+ *  }
+ * \enddot
+
+ * Classes in this diagram:
+ *    - Event : Data container that holds data of template type and keeps a timestamp of the event.
+ *    - Buffer : Data container for EventBuffer operators such as EventReader and EventWriter.
+ *    - IEventBuffer : declares an interface for the EventBuffer class.
+ *    - EventBuffer : Circular array capable of storing Events of template type T.
+ *    - EventWriter : Writes events to an EventBuffer.
+ *    - IEventReader : IEventReader declares an interface to read Events from EventBuffers.
+ *    - EventReader : Reads events from an EventBuffer.
+ *    - SynchronizedEventReader : Reads events from an EventBuffer while using a shared timeStamp variable between other SynchronizedEventReaders.
+ *    - Monitor : Represents a periodic Monitor that watches over application code.
+ *	  - SeqLock: Reader/writer consistent mechanism without starving writers.
+ *	  - ArraySeqLock : Reader/writer consistent mechanism without starving writers that protects an entire array where a single writer exists.
+ *
+ *
+ * EventBuffers store Events of a template type T, these events can be written in O(1) time and read asynchronously without
+ * using dynamic memory.
+ *
+ * The main data structure behind the EventBuffer is a circular array. Events are read by EventReaders but they are never
+ * deleted from the buffer, only overwritten as the buffer fills up. All readers subscribed to the buffers will read every
+ * event written to it, assuming they are preempted enough to read them all. Thus readers must be preempted sufficient times such
+ * that events are read at an equal or faster pace than they are written.
+ *
+ * To ensure data integrity, writing and reading operations are encapsulated in two different objects. Thus it becomes
+ * possible to guarantee that readers cannot accidentally write into a buffer.
+ *
+ * Reading operations are accomplished by two classes, both are child of the IEventReader Interface. The readers are meant
+ * to be used in a Monitor, which periodically wakes up to check the monitored application code is functioning correctly.
+ *  - EventReader: reads events in a FIFO order.
+ *  - SynchronizedEventReader: reads events events that are larger than a synchronization timestamp variable, shared
+ *  between different buffers in FIFO order; this event reader is meant to be used inside a Monitor.
+ *
+ * Writing operations are done by a single EventWriter class, where all operations take constant O(1) time. Thus writing
+ * will always take the same time. This makes the timing analysis of the application deterministic and not dependent on
+ * how many readers are present in the buffer, full timing isolation for the writer is achieved.
+ *
+ * The class also uses a template parameter to define its size, thus avoiding the use of dynamic memory with a clean
+ * design. However this template parameter also has the disadvantage of burdening the user with the exact same size
+ * declaration whenever he wants to use it. To avoid this a superclass name IEventBuffer was created.
+ *
+ * To avoid cyclic dependency where the EventBuffer needs to know readers and writers, and those need to know the EventBuffer,
+ * a Buffer class was created. The buffer class contains the data readers and writers need and also defines some common
+ * operations such as atomic writing elements to the buffer, or atomically reading an index.
+ *
+ * \section example_sec Examples
+ *
+ * \note You can include each file manually or monitoring.h which includes all the necessary files for you.
+ *
+ * \subsection eventwriter_sec Event Writing
+ *
+ *  \code
+ *   EventBuffer<int, 3> buf;
+ *   EventWriter<int> writer;
+ *   buf.configWriter(writer);
+ *
+ *   Event<int> one(1);
+ *   writer.push(one);
+ *   writer.push(2);
+ *  \endcode
+ *
+ * \subsection eventreader_sec EventReading
+ *
+ * \code
+ * EventBuffer<int, 3> buf;
+ * EventReader<int> reader;
+ * buf.configReader(reader);
+ *
+ * Event<int> event;
+ * bool updated;
+ * bool gap;
+ * if(reader.pop(event,gap)){
+ *     int & data =event.getData();
+ *     struct timespec & time=event.getTime();
+ *
+ *     //process data
+ *
+ *     if(gap){
+ *      //a gap occurred, elements that we did not read were overwritten.
+ *     }
+ * }
+ * \endcode
+ *
+ * \subsection monitor_sec Monitors
+ *
+ * To create a Monitor we must subclass Monitor with out own subclass and override the run method. Monitors are run
+ * on their own thread and execute periodically. The Monitor superclass already provides all the necessary code for this.
+ *
+ * \code
+ *    class MonitorTestClass : public Monitor {
+ *    private:
+ *         SynchronizedEventReader<int> eventReader;
+ *    protected:
+ *         void run(){
+ *               Event<int> data;
+ *               bool gap;
+ *               if(eventReader.popHead(data, gap)){
+ *                   printf("%d",data.getData());
+ *
+ *                   if(gap){
+ *                       printf("oh no! a gap!");
+ *                   }
+ *               }
+ *          }
+ *
+ *     public:
+ *         MonitorTestClass(IEventBuffer<int> &buffer): Monitor(1,0){
+ *               configSynchronizedEventReader<int>(eventReader, buffer);
+ *         }
+ *     };
+ *  \endcode
+ *
+ * The period of the Monitor is defined in the Monitor constructor, the first parameter is number of seconds, and the
+ * second parameter is the number of nanoseconds.
+ *
+ *    \code
+ *        EventBuffer<int, 3> eventBuffer;
+ *        MonitorTestClass monitor(eventBuffer);
+ *        monitor.enable();
+ *    \endcode
+ *
+ * \warning The Monitor object must always exist in memory, otherwise the behavior of the Monitor is undefined.
+ *
+ * If you wish to terminate the monitor you can call the async_disable or sync_disable methods.
+ *
+ * \subsubsection monnitor_dead_line_miss Deadline miss detection monitors.
+ *
+ * The monitor includes an API to check for dead line violation and call a function which can be overloaded by the user,
+ * the default function simply prints to stderr.
+ *
+ *   \code
+ *    class MonitorTestClass2 : public Monitor {
+ *    private:
+ *         SynchronizedEventReader<int> eventReader;
+ *    protected:
+ *         void run(){
+ *               Event<int> data;
+ *               bool gap;
+ *               if(eventReader.popHead(data, gap)){
+ *                   printf("%d",data.getData());
+ *
+ *                   if(gap){
+ *                       printf("oh no! a gap!");
+ *                   }
+ *               }
+ *          }
+ *
+ *         void deadLineMissAction(){
+ *              std::cerr << "Dead line miss for monitor" <<std::endl;
+ *         }
+ *
+ *     public:
+ *         MonitorTestClass(IEventBuffer<int> &buffer): Monitor(1,0){
+ *               configSynchronizedEventReader<int>(eventReader, buffer);
+ *         }
+ *     };
+ *  \endcode
+ *
+ *  Finally you must enable the monitor with dead line miss detection.
+ *
+ *   \code
+ *        EventBuffer<int, 3> eventBuffer;
+ *        MonitorTestClass monitor(eventBuffer);
+ *        monitor.enableWithDeadlineMissCheck();
+ *
+ *        ...
+ *
+ *       monitor.async_disable();
+ *   \endcode
+ *
+ *
+ * \section test_sec Unit Tests
+ *
+ * The framework provides a unit test suite to verify that the implementation behaves as expected.
+ *
+ * - ArraySeqLockTest: Tests that our custom array seq lock mechanism works correctly. The test is single threaded and tests all possible read/write combinations.
+ *
+ * - BufferTest verifies that common push/readIndex operations work as expected.
+ *
+ * - EventReaderMultiThreadTest: lets readers and a writer race against each other while pushing/popping elements. The buffer length, writer/reader periodicity can be configured. This test Verifies that the removed data is sequentially correct. By nature this is necessarily stochastic and the test is made to yield 99% confidence that the EventReader works correctly. The test also generates some statistics such as min/max write/read time.
+ *
+ * - EventReaderTest: tests the event reader in a single threaded environment to ensure that the correct element is always popped.
+ *
+ * - Event test: tests that several operators work correctly.
+ *
+ * - Monitor test: tests that the monitor enables correctly.
+ *
+ * - SynchronizedEventReaderTest: tests the synchronized event reader in a single threaded environment to ensure that the correct element is always popped.
+ *
+ * - SynchronizedEventReaderMultiThreadTest: lets readers and a writer race against each other while pushing/popping elements. The buffer length, writer/reader periodicity can be configured. This test Verifies that the removed data is sequentially correct. By nature this is necessarily stochastic and the test is made to yield 99% confidence that the SynchronizedEventReader works correctly. The test also generates some statistics such as min/max write/read time.
+ * - EventReaderTest: tests the event
+ *
+ * \section todo_sec Todos
+ * 	- Implement blocking read calls.
+ *  - A more thorough complexity analise on the reader/writer algorithms.
+ * 	- Try to come up with some sort of linux like select system call, which allows for a process to wait on multiple  event buffers at once. We cannot use select because select waits on read calls only.  http://linux.die.net/man/2/select
+ *   - Priority inheritance locks.
+ *
+ * \section contact_sec Contact Us
+ *
+ *	If you wish to contact the authors please send an email to Humberto Carvalho 1120409@isep.ipp.pt .
+ *
+ */
